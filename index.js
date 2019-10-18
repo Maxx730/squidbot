@@ -2,14 +2,26 @@ const slackbot = require('slackbots');
 const axios = require('axios');
 let users = new Array();
 const phrases = [
-	'And now that your holes are in bloom...',
-	'Nigglety Nigglety Nog, the cat buttfucked the frog...',
-	'You are the squirting queeeeen!',
-	'JOHNNY BRANMUFFINZZZZZ',
-	'Ill pinch their dicks with this LOBSTA',
-	'You N! You stupid N!',
-	'ITS THE BALOON DILDO JAMBOREE, EVERYONES FAVORITE TIME OF YEAR'
+	'gimmeammo'
+];
+
+const items = [
+	'grenade',
+	'potion',
+	'ammunition'
 ]
+
+//Revive dead people every 5 minutes.
+setInterval(() => {
+	users.map(user => {
+		if(user.health === 0) {
+			user.health = 30;
+			bot.postMessageToChannel(TARGET_ROOM,`:angel: ${user.name} has been revived.`)
+		}
+	});
+},300000)
+
+const TARGET_ROOM = 'squid';
 
 function findUser(id) {
 	let foundUser = null;
@@ -37,7 +49,7 @@ function formatHealth() {
 	let healthString = '';
 
 	users.map(user => {
-		healthString += `*${user.name}:* :heart: :small_orange_diamond: ${user.health}\n`;
+		healthString += `*${user.name}:* ${user.health > 0 ? ':heart:' : ':skull:'} :small_orange_diamond: ${user.health}\n`;
 	});
 
 	return healthString;
@@ -60,12 +72,66 @@ function finishName(arr) {
 function damageUser(name,amt) {
 	users.map(user => {
 		if(user.name === name) {
-			user.health -= amt;
+			user.health - amt < 0 ? user.health = 0 : user.health -= amt;
+			if(user.health > 0) {
+				bot.postMessageToChannel(TARGET_ROOM,`${user.name} suffered ${amt} points of damage.`)
+			} else {
+				bot.postMessageToChannel(TARGET_ROOM,`:skull:  ${user.name} has died...`);
+			}
 		}
 	});
 }
 
-function getAction(cmd,callback) {
+function checkPhraes(text,user) {
+	let amount = 0;
+	phrases.map(phrase => {
+		if(text.indexOf(phrase) > -1) {
+			amount++;
+			user.ammo++;
+		}
+	});
+
+	if(amount > 0) {
+		if(amount > 1) {
+			bot.postMessageToChannel(TARGET_ROOM,`*${user.name}* recieved ${amount} rounds of ammunition.`);
+		} else {
+			bot.postMessageToChannel(TARGET_ROOM,`*${user.name}* recieved a round of ammunition.`);
+		}
+	}
+}
+
+function calculateDamage(rangeStart,rangeEnd) {
+	return Math.ceil(Math.random() * rangeStart) + rangeEnd;
+}
+
+function hasAmmo(user) {
+	if(user.ammo > 0) {
+		return true;
+	} else {
+		bot.postMessageToChannel(TARGET_ROOM,`Sorry *${user.name}*, you are out of ammunition.`);
+		return false;
+	}
+}
+
+function isAlive(user) {
+	if(user.health > 0) {
+		return true;
+	} else {
+		bot.postMessageToChannel(TARGET_ROOM,`*${user.name}* is dead, dead men cannot shoot.`)
+		return false;
+	}
+}
+
+function targetAlive(target) {
+	if(target.health > 0) {
+		return true;
+	} else {
+		bot.postMessageToChannel(TARGET_ROOM,`*${target.name}* is already dead...`);
+		return false;
+	}
+}
+
+function getAction(cmd,requester) {
 	if(cmd.split(' ').length > 2) {
 		switch(cmd.split(' ')[2]) {
 			case 'shoot':
@@ -77,23 +143,65 @@ function getAction(cmd,callback) {
 						name = cmd.split(' ')[3];
 					}
 
+
 					if(findUserByName(name)) {
 						let found = findUserByName(name);
-						bot.postMessageToUser('max.kinghorn',`Shooting ${found.name}...`);
-
-						setTimeout(() => {
-							damageUser(found.name,10);
-						},500);
+						if(targetAlive(found) && hasAmmo(requester) && isAlive(requester)) {
+							bot.postMessageToChannel(TARGET_ROOM,`${found.name} :small_orange_diamond: :gun: :small_orange_diamond: ${requester.name}`);
+							setTimeout(() => {
+								requester.ammo--;
+								damageUser(found.name,calculateDamage(6,4));
+							},500);
+						}
 					} else {
-						bot.postMessageToUser('max.kinghorn','User does not exist.');
+						bot.postMessageToChannel(TARGET_ROOM,'User does not exist.');
 					}
 				} else {
-					bot.postMessageToUser('max.kinghorn','Target not specified.');
+					bot.postMessageToChannel(TARGET_ROOM,'Target not specified.');
+				}
+			break;
+			case 'grenade':
+				bot.postMessageToChannel(TARGET_ROOM,`${requester.name} hurled a grenade.`);
+				setTimeout(() => {
+					users.map(user => {
+						if(user.id !== requester.id) {
+							damageUser(user.name,calculateDamage(16,4));
+						}
+					});
+				},500)
+			break;
+			case 'jihad':
+				if(requester.health > 0) {
+					bot.postMessageToChannel(TARGET_ROOM,`*${requester.name}* yells ALOHA SNACKBAR`);
+					setTimeout(() => {
+						users.map(user => {
+							damageUser(user.name,calculateDamage(160,400));
+						});
+					},500)
+				} else {
+					bot.postMessageToChannel(TARGET_ROOM,`*${requester.name}* is dead, unable to explode.`);
+				}
+			break;
+			case 'potion':
+				if(requester.items.potion > 0) {
+					bot.postMessageToChannel(TARGET_ROOM,`*${requester.name}* used a potion. :tropical_drink:`);
+					requester.items.potion--;
+					requester.health += 30;
+				}
+			break;
+			case 'kys':
+				if(requester.health > 0) {
+					bot.postMessageToChannel(TARGET_ROOM,`*${requester.name}* killed themself.`);
+					setTimeout(() => {
+						damageUser(requester.name,calculateDamage(160,400));
+					},500)
+				} else {
+					bot.postMessageToChannel(TARGET_ROOM,`*${requester.name}* already offed themself.`)
 				}
 			break;
 		}
 	} else {
-		bot.postMessageToUser('max.kinghorn','No action to do.');
+		bot.postMessageToChannel(TARGET_ROOM,'No action to do.');
 	}
 }
 
@@ -101,7 +209,7 @@ function showItem(cmd) {
 	if(cmd.split(' ').length > 2) {
 		switch(cmd.split(' ')[2]) {
 			case 'health':
-				bot.postMessageToUser('max.kinghorn',formatHealth())
+				bot.postMessageToChannel(TARGET_ROOM,formatHealth())
 			break;
 			case 'user':
 				if(cmd.split(' ').length > 3) {
@@ -114,12 +222,12 @@ function showItem(cmd) {
 
 					if(findUserByName(name)) {
 						let found = findUserByName(name);
-						bot.postMessageToUser('max.kinghorn',`*${found.name}*\nHealth: ${found.health}`);
+						bot.postMessageToChannel(TARGET_ROOM,`*${found.name}*\nHealth: ${found.health}\nAmmo: ${found.ammo}\n*Items*\nGrenades: ${found.items.grenade}\nPotions: ${found.items.potion}`);
 					} else {
-						bot.postMessageToUser('max.kinghorn','User does not exist.');
+						bot.postMessageToChannel(TARGET_ROOM,'User does not exist.');
 					}
 				} else {
-					bot.postMessageToUser('max.kinghorn','Username required.')
+					bot.postMessageToChannel(TARGET_ROOM,'Username required.')
 				}
 			break;
 		}
@@ -127,17 +235,22 @@ function showItem(cmd) {
 }
 
 const bot = new slackbot({
-	token: 'xoxb-798237783552-785504416946-yoblznDa3NgxeVeTwZcGrUr1',
+	token: 'xoxb-798237783552-785504416946-LS7DKSi06O1PJUbuRdywWwGR',
 	name: 'Squidbot'
 });
 
 bot.on('start',() => {
 	bot.getUsers()._value.members.map(member => {
-		if(member.profile.real_name !== 'SquidBot' && member.profile.real_name !== 'Slackbot') {
+		if(member.profile.real_name !== 'Polly' && member.profile.real_name !== 'SquidBot' && member.profile.real_name !== 'Slackbot') {
 			users.push({
 				id: member.id,
 				name: member.profile.real_name,
-				health: 100
+				health: 50,
+				ammo: 10,
+				items: {
+					grenade: 1,
+					potion: 1
+				}
 			});
 		}
 	});
@@ -148,10 +261,17 @@ bot.on('message',(data) => {
 		case 'user_typing':
 			return;
 		case 'message':
-			if(data.text.indexOf('SB: show') > -1) {
-				showItem(data.text);
-			} else if(data.text.indexOf('SB: action') > -1) {
-				getAction(data.text);
+			//Verify that the user is part of this group and can
+			//run commands.
+			if(findUser(data.user)) {
+				//Check if the user used any of the phrases
+				checkPhraes(data.text,findUser(data.user));
+
+				if(data.text.indexOf('sb show') > -1) {
+					showItem(data.text);
+				} else if(data.text.indexOf('sb action') > -1) {
+					getAction(data.text,findUser(data.user));
+				}
 			}
 		break;
 	}
