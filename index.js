@@ -69,7 +69,15 @@ function finishName(arr) {
 	return fixedName;
 }
 
-function damageUser(name,amt) {
+function addPoints(winner,amt) {
+	users.map(user => {
+		if(user.id === winner.id){
+			user.score += amt;
+		}
+	});
+}
+
+function damageUser(name,amt,attacker,callback) {
 	users.map(user => {
 		if(user.name === name) {
 			user.health - amt < 0 ? user.health = 0 : user.health -= amt;
@@ -77,6 +85,9 @@ function damageUser(name,amt) {
 				bot.postMessageToChannel(TARGET_ROOM,`${user.name} suffered ${amt} points of damage.`)
 			} else {
 				bot.postMessageToChannel(TARGET_ROOM,`:skull:  ${user.name} has died...`);
+				if(callback) {
+					callback();
+				}
 			}
 		}
 	});
@@ -150,7 +161,7 @@ function getAction(cmd,requester) {
 							bot.postMessageToChannel(TARGET_ROOM,`${found.name} :small_orange_diamond: :gun: :small_orange_diamond: ${requester.name}`);
 							setTimeout(() => {
 								requester.ammo--;
-								damageUser(found.name,calculateDamage(6,4));
+								damageUser(found.name,calculateDamage(6,4),requester);
 							},500);
 						}
 					} else {
@@ -161,21 +172,26 @@ function getAction(cmd,requester) {
 				}
 			break;
 			case 'grenade':
-				bot.postMessageToChannel(TARGET_ROOM,`${requester.name} hurled a grenade.`);
-				setTimeout(() => {
-					users.map(user => {
-						if(user.id !== requester.id) {
-							damageUser(user.name,calculateDamage(16,4));
-						}
-					});
-				},500)
+				if(requester.items.grenade > 0){
+					bot.postMessageToChannel(TARGET_ROOM,`${requester.name} hurled a grenade.`);
+					setTimeout(() => {
+						requester.items.grenade--;
+						users.map(user => {
+							if(user.id !== requester.id) {
+								damageUser(user.name,calculateDamage(16,4),requester);
+							}
+						});
+					},500)
+				} else {
+					bot.postMessageToChannel(TARGET_ROOM,`*${requester.name}* is out of grenades.`)
+				}
 			break;
 			case 'jihad':
 				if(requester.health > 0) {
 					bot.postMessageToChannel(TARGET_ROOM,`*${requester.name}* yells ALOHA SNACKBAR`);
 					setTimeout(() => {
 						users.map(user => {
-							damageUser(user.name,calculateDamage(160,400));
+							damageUser(user.name,calculateDamage(160,400),requester);
 						});
 					},500)
 				} else {
@@ -193,10 +209,35 @@ function getAction(cmd,requester) {
 				if(requester.health > 0) {
 					bot.postMessageToChannel(TARGET_ROOM,`*${requester.name}* killed themself.`);
 					setTimeout(() => {
-						damageUser(requester.name,calculateDamage(160,400));
+						damageUser(requester.name,calculateDamage(160,400),requester);
 					},500)
 				} else {
 					bot.postMessageToChannel(TARGET_ROOM,`*${requester.name}* already offed themself.`)
+				}
+			break;
+			case 'whip':
+				if(cmd.split(' ').length > 3) {
+					let name = null;
+					if(cmd.split(' ').length > 4) {
+						name = finishName(cmd.split(' '));
+					} else {
+						name = cmd.split(' ')[3];
+					}
+	
+	
+					if(findUserByName(name)) {
+						bot.postMessageToChannel(TARGET_ROOM,`*${requester.name}* started whipping the shit out of *${name}*`)
+						let whipLoop = setInterval(() => {
+							bot.postMessageToChannel(TARGET_ROOM,`*CRACK*`);
+							damageUser(name,calculateDamage(5,4),requester,() => {
+								clearTimeout(whipLoop);
+							});
+						},3000);
+					} else {
+						bot.postMessageToChannel(TARGET_ROOM,'User does not exist.');
+					}
+				} else {
+					bot.postMessageToChannel(TARGET_ROOM,'Target not specified.');
 				}
 			break;
 		}
@@ -235,7 +276,7 @@ function showItem(cmd) {
 }
 
 const bot = new slackbot({
-	token: 'xoxb-798237783552-785504416946-LS7DKSi06O1PJUbuRdywWwGR',
+	token: 'xoxb-798237783552-785504416946-9OFTrcrveYhgN9hC399AvAS3',
 	name: 'Squidbot'
 });
 
@@ -243,6 +284,7 @@ bot.on('start',() => {
 	bot.getUsers()._value.members.map(member => {
 		if(member.profile.real_name !== 'Polly' && member.profile.real_name !== 'SquidBot' && member.profile.real_name !== 'Slackbot') {
 			users.push({
+				score:0,
 				id: member.id,
 				name: member.profile.real_name,
 				health: 50,
@@ -260,10 +302,11 @@ bot.on('message',(data) => {
 	switch(data.type) {
 		case 'user_typing':
 			return;
-		case 'message':
+		case 'message':      
 			//Verify that the user is part of this group and can
 			//run commands.
 			if(findUser(data.user)) {
+				console.log(findUser(data.user).name)
 				//Check if the user used any of the phrases
 				checkPhraes(data.text,findUser(data.user));
 
