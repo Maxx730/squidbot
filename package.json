@@ -17,7 +17,7 @@
   },
   "homepage": "https://github.com/Maxx730/squidbot#readme",
   "dependencies": {
-    "axios": "^0.19.0",
+    "axios": "^0.21.1",
     "slackbot": "0.0.2",
     "slackbots": "^1.2.0"
   }
